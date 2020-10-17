@@ -46,3 +46,14 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE prevInstance, PSTR cmdLine, in
 
 	return rst;
 }
+//
+//#include "Systems/Fitter.h"
+//
+//int main()
+//{
+//	PolynomialFitter fitter;
+//	using namespace std;
+//	vector<Ubpa::pointf2> points;
+//
+//	points.push_back(Ubpa::pointf2(1, 1));
+//}

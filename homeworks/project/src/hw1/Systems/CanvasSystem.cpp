@@ -4,6 +4,8 @@
 
 #include <_deps/imgui/imgui.h>
 
+#include "Fitter.h"
+
 using namespace Ubpa;
 
 void CanvasSystem::OnUpdate(Ubpa::UECS::Schedule& schedule) {
@@ -11,6 +13,18 @@ void CanvasSystem::OnUpdate(Ubpa::UECS::Schedule& schedule) {
 		auto data = w->entityMngr.GetSingleton<CanvasData>();
 		if (!data)
 			return;
+		std::vector<std::unique_ptr<Fitter>> fitters;
+		fitters.emplace_back(new PolynomialFitter);
+		fitters.emplace_back(new GaussianFitter);
+		fitters.emplace_back(new LSFitter);
+		fitters.emplace_back(new RidgeFitter);
+		const int num_draw_point = 100;
+		data->draw_points.resize(fitters.size());
+
+		for (auto& draw_point : data->draw_points)
+		{
+			draw_point.resize(num_draw_point);
+		}
 
 		if (ImGui::Begin("Canvas")) {
 			ImGui::Checkbox("Enable grid", &data->opt_enable_grid);
@@ -48,18 +62,44 @@ void CanvasSystem::OnUpdate(Ubpa::UECS::Schedule& schedule) {
 			const ImVec2 origin(canvas_p0.x + data->scrolling[0], canvas_p0.y + data->scrolling[1]); // Lock scrolled origin
 			const pointf2 mouse_pos_in_canvas(io.MousePos.x - origin.x, io.MousePos.y - origin.y);
 
-			// Add first and second point
-			if (is_hovered && !data->adding_line && ImGui::IsMouseClicked(ImGuiMouseButton_Left))
+			//// Add first and second point
+			//if (is_hovered && !data->adding_line && ImGui::IsMouseClicked(ImGuiMouseButton_Left))
+			//{
+			//	data->points.push_back(mouse_pos_in_canvas);
+			//	data->points.push_back(mouse_pos_in_canvas);
+			//	data->adding_line = true;
+			//}
+			//if (data->adding_line)
+			//{
+			//	data->points.back() = mouse_pos_in_canvas;
+			//	if (!ImGui::IsMouseDown(ImGuiMouseButton_Left))
+			//		data->adding_line = false;
+			//}
+
+			if (is_hovered && ImGui::IsMouseClicked(ImGuiMouseButton_Left))
 			{
-				data->points.push_back(mouse_pos_in_canvas);
-				data->points.push_back(mouse_pos_in_canvas);
-				data->adding_line = true;
+				//Adding in sequence
+				auto iter =
+					std::find_if(data->points.begin(), data->points.end(), [&mouse_pos_in_canvas](auto& point)
+						{return point[0] > mouse_pos_in_canvas[0]; });
+				data->points.insert(iter, mouse_pos_in_canvas);
+				data->dx = (data->points.back()[0] - data->points.front()[0]) / (num_draw_point-1);
 			}
-			if (data->adding_line)
+
+			if (!data->points.empty())
 			{
-				data->points.back() = mouse_pos_in_canvas;
-				if (!ImGui::IsMouseDown(ImGuiMouseButton_Left))
-					data->adding_line = false;
+				for (int i = 0; i < fitters.size(); ++i)
+				{
+					fitters[i]->set_data(data->points);
+					auto beg = data->points.front()[0];
+					auto dx = data->dx;
+					for (int j = 0; j < num_draw_point; ++j)
+					{
+						data->draw_points[i][j][0] = origin.x + beg + j * dx;
+						data->draw_points[i][j][1] = origin.y + fitters[i]->f(beg + j * dx);
+					}
+					draw_list->AddPolyline(&(data->draw_points[i][0]), num_draw_point, IM_COL32(255 - 128 / (i + 1), 127 + 128 / (i + 1),   128 / (i + 1), 255), false, 2.0f);
+				}
 			}
 
 			// Pan (we use a zero mouse threshold when there's no context menu)
@@ -95,11 +135,11 @@ void CanvasSystem::OnUpdate(Ubpa::UECS::Schedule& schedule) {
 				for (float y = fmodf(data->scrolling[1], GRID_STEP); y < canvas_sz.y; y += GRID_STEP)
 					draw_list->AddLine(ImVec2(canvas_p0.x, canvas_p0.y + y), ImVec2(canvas_p1.x, canvas_p0.y + y), IM_COL32(200, 200, 200, 40));
 			}
-			for (int n = 0; n < data->points.size(); n += 2)
-				draw_list->AddLine(ImVec2(origin.x + data->points[n][0], origin.y + data->points[n][1]), ImVec2(origin.x + data->points[n + 1][0], origin.y + data->points[n + 1][1]), IM_COL32(255, 255, 0, 255), 2.0f);
+			for (int n = 0; n < data->points.size(); n += 1)
+				draw_list->AddCircleFilled(ImVec2(origin.x + data->points[n][0], origin.y + data->points[n][1]), 4.0f, IM_COL32(255, 255, 0, 255));
 			draw_list->PopClipRect();
 		}
 
 		ImGui::End();
-	});
+		});
 }
